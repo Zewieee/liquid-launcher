@@ -53,9 +53,10 @@ PROVIDERS = [
 
 
 def iter_repo_files():
+    self_path = Path(__file__).resolve()
     skip_dirs = {".git", "build", "dist", "work", "classes", "dex", "target", "__pycache__"}
     for path in ROOT.rglob("*"):
-        if not path.is_file():
+        if not path.is_file() or path.resolve() == self_path:
             continue
         rel_parts = path.relative_to(ROOT).parts
         if any(part in skip_dirs for part in rel_parts):
