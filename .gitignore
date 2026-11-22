@@ -1,0 +1,61 @@
+# Secrets, keystores, and local environment config (NEVER commit)
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+*.crt
+*.cer
+*.cookies
+*secret*
+*credential*
+*token*.txt
+*token*.json
+
+# Decompiled third-party base APK workspace & binaries
+work/
+dist/
+build/
+*.apk
+*.apks
+*.aab
+*.idsig
+*.dex
+*.jar
+*.so
+*.o
+*.a
+
+# Downloaded Maven dependencies (verified via libs/checksums.json)
+libs/*.jar
+
+# Rust / Native build artifacts
+native/target/
+
+# Bridge build artifacts
+bridge/classes/
+bridge/dex/
+bridge/bridge.jar
+
+# Validation build & device output artifacts
+validation/classes/
+validation/dex/
+validation/checks.jar
+validation/*-result.txt
+validation/install.txt
+validation/installed-hash.txt
+validation/package-check.json
+validation/baseline-*.json
+
+# OS / Editor / Python cache
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
