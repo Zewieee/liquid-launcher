@@ -1,0 +1,26 @@
+name: Lyric Providers Health
+
+on:
+  schedule:
+    # Runs every Monday at 03:00 UTC to detect upstream lyric API changes early
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provider-health:
+    name: Check 7 Parallel HTTPS Lyric Providers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Probe Lyric Providers & Publish Summary
+        run: python3 scripts/check-maintenance.py --providers

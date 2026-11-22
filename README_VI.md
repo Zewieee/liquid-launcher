@@ -4,6 +4,8 @@
 
 **Giao diện kính mờ Liquid Glass không viền, bộ xử lý đồ họa Rust/JNI và trình phát nhạc kèm lời 60fps dành cho Android TV.**
 
+[![CI Build & Security Audit](https://github.com/Zewieee/liquid-launcher/actions/workflows/ci.yml/badge.svg)](https://github.com/Zewieee/liquid-launcher/actions/workflows/ci.yml)
+[![Lyric Providers Health](https://github.com/Zewieee/liquid-launcher/actions/workflows/provider-health.yml/badge.svg)](https://github.com/Zewieee/liquid-launcher/actions/workflows/provider-health.yml)
 [![Version](https://img.shields.io/badge/release-v3.3--fix.145-0ea5e9?style=flat-square)](CHANGELOG.md)
 [![Android API](https://img.shields.io/badge/Android_TV-API_26%2B-3ddc84?style=flat-square&logo=android&logoColor=white)](#yêu-cầu-môi-trường)
 [![Rust](https://img.shields.io/badge/Rust-1.85.1_(JNI)-f97316?style=flat-square&logo=rust&logoColor=white)](#kiến-trúc-hệ-thống)
@@ -13,7 +15,7 @@
 
 [English](README.md) · **Tiếng Việt**
 
-[Tính năng](#tính-năng-nổi-bật) · [Kiến trúc](#kiến-trúc-hệ-thống) · [Hiệu năng](#tối-ưu-hiệu-năng--ram) · [Cài đặt nhanh](#hướng-dẫn-biên-dịch-nhanh) · [Kiểm thử](#kiểm-thử-art-trên-thiết-bị) · [Bảo mật](#bảo-mật--quyền-riêng-tư)
+[Hình ảnh thực tế](#hình-ảnh-giao-diện-thực-tế) · [Tính năng](#tính-năng-nổi-bật) · [Kiến trúc](#kiến-trúc-hệ-thống) · [Hiệu năng](#tối-ưu-hiệu-năng--ram) · [Cài đặt nhanh](#hướng-dẫn-biên-dịch-nhanh) · [Kiểm thử & Bảo trì](#kiểm-thử-art-trên-thiết-bị) · [Bảo mật](#bảo-mật--quyền-riêng-tư)
 
 </div>
 
@@ -24,6 +26,23 @@
 **Liquid Launcher** là lớp mở rộng giao diện cho launcher Android TV, tập trung vào ngôn ngữ thiết kế **kính mờ trong suốt không viền**, **thao tác D-pad trực quan bằng remote** và **chuyển động mượt 60fps**. Dự án kết hợp **91 lớp Java**, **4 mô-đun Rust/C JNI không phụ thuộc crate ngoài**, một **cầu nối media ADB tùy chọn** và **27 bộ kiểm thử ART tự động** chạy trực tiếp trên thiết bị.
 
 > **Lưu ý bản quyền & phạm vi:** Kho mã nguồn này chỉ chứa **100% mã nguồn gốc tự phát triển** (`src/`, `native/`, `bridge/`, `stubs/`, `validation/` và bộ script build). Thư mục giải mã APK gốc của bên thứ ba (`work/`), file `.apk`/`.jar` biên dịch sẵn, keystore ký số và tệp `.env` cục bộ được loại trừ hoàn toàn. Xem thêm [SECURITY.md](SECURITY.md).
+
+---
+
+## Hình ảnh giao diện thực tế
+
+<div align="center">
+
+### Màn hình chính Liquid Glass & Thanh Dock trên cùng (Visualizer 4 cột `MODE_DOCK`)
+![Liquid Launcher Home & Top Dock](docs/screenshots/home.jpg)
+
+### Sân khấu Popup Nhạc 60fps & Lời bài hát đồng bộ (Visualizer 28 cột `MODE_STAGE`)
+![Liquid Launcher Music Stage Popup](docs/screenshots/music-stage.jpg)
+
+### Trung tâm điều khiển Liquid Glass (Làm mờ nền trực tiếp bằng Rust/JNI)
+![Liquid Launcher Control Center](docs/screenshots/control-center.jpg)
+
+</div>
 
 ---
 
@@ -156,6 +175,14 @@ Chạy toàn bộ **27 bộ kiểm thử ART** trực tiếp trên Android TV (t
 # Hoặc kiểm tra thêm nguồn lời trực tuyến:
 .\validation\run-checks.ps1 -Tv 192.168.1.100:5555 -LiveLyrics
 ```
+
+### Bảo trì tự động & GitHub Actions CI
+
+- **CI Build & Quét bảo mật ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):** Tự động chạy trên mỗi lần push hoặc tạo Pull Request để quét rò rỉ bí mật/tệp nhị phân (`scripts/check-maintenance.py --offline`), kiểm tra SHA-256 thư viện Maven, biên dịch toàn bộ 91 lớp Java + cầu nối ADB + 35 lớp kiểm thử + đóng gói D8 DEX với Android API 35, đồng thời chạy `cargo check` cho thư viện Rust `1.85.1`.
+- **Giám sát định kỳ 7 nguồn lời bài hát ([`.github/workflows/provider-health.yml`](.github/workflows/provider-health.yml)):** Tự động kiểm tra hàng tuần (hoặc bấm chạy thủ công 1 chạm trên tab Actions) tình trạng hoạt động và độ trễ của 7 API lời bài hát HTTPS để phát hiện sớm nếu có nguồn bên thứ ba đổi endpoint. Bạn cũng có thể chạy kiểm tra ngay trên máy bất cứ lúc nào:
+  ```powershell
+  python scripts/check-maintenance.py
+  ```
 
 ---
 

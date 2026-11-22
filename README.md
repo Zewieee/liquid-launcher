@@ -4,16 +4,18 @@
 
 **A frameless Liquid Glass UI, native Rust/JNI graphics engine, and 60fps live-lyrics music hub for Android TV.**
 
+[![CI Build & Security Audit](https://github.com/Zewieee/liquid-launcher/actions/workflows/ci.yml/badge.svg)](https://github.com/Zewieee/liquid-launcher/actions/workflows/ci.yml)
+[![Lyric Providers Health](https://github.com/Zewieee/liquid-launcher/actions/workflows/provider-health.yml/badge.svg)](https://github.com/Zewieee/liquid-launcher/actions/workflows/provider-health.yml)
 [![Version](https://img.shields.io/badge/release-v3.3--fix.145-0ea5e9?style=flat-square)](CHANGELOG.md)
 [![Android API](https://img.shields.io/badge/Android_TV-API_26%2B-3ddc84?style=flat-square&logo=android&logoColor=white)](#prerequisites)
 [![Rust](https://img.shields.io/badge/Rust-1.85.1_(JNI)-f97316?style=flat-square&logo=rust&logoColor=white)](#architecture)
-[![Page Size](https://img.shields.io/badge/ELF_Alignment-16_KB-6366f1?style=flat-square)](#native-rust--jni-pipeline)
+[![Page Size](https://img.shields.io/badge/ELF_Alignment-16_KB-6366f1?style=flat-square)](#key-features)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
 [![Security](https://img.shields.io/badge/Security-Policy-10b981?style=flat-square)](SECURITY.md)
 
 **English** · [Tiếng Việt](README_VI.md)
 
-[Features](#key-features) · [Architecture](#architecture) · [Performance](#performance--memory-engineering) · [Quick Start](#quick-start) · [Testing](#on-device-verification) · [Security](#security--privacy-by-design)
+[Screenshots](#screenshots) · [Features](#key-features) · [Architecture](#architecture) · [Performance](#performance--memory-engineering) · [Quick Start](#quick-start) · [Testing & Maintenance](#on-device-verification) · [Security](#security--privacy-by-design)
 
 </div>
 
@@ -24,6 +26,23 @@
 **Liquid Launcher** is an Android TV launcher overlay crafted around **frameless translucent glass**, **D-pad-first ergonomics**, and **fluid 60fps motion**. Built as a hybrid **Java + zero-dependency Rust/JNI** overlay (91 Java modules, 4 native Rust/C modules, an optional ADB media bridge, and 27 automated on-device ART verification suites), it turns an Android TV home screen into a cohesive living-room media experience—without invasive permissions, background bloat, or closed black-box dependencies.
 
 > **Copyright & Scope Notice:** This repository contains **100% original overlay source code** (`src/`, `native/`, `bridge/`, `stubs/`, `validation/`, and build tooling). Decompiled third-party base APK assets (`work/`), prebuilt `.apk`/`.jar` binaries, signing keystores, and local environment files are intentionally excluded. See [SECURITY.md](SECURITY.md) and [Quick Start](#quick-start) for build prerequisites.
+
+---
+
+## Screenshots
+
+<div align="center">
+
+### Frameless Liquid Glass Home & Top Dock (`MODE_DOCK` 4-Capsule Visualizer)
+![Liquid Launcher Home & Top Dock](docs/screenshots/home.jpg)
+
+### 60fps Music Stage Popup & Synced Japanese Lyrics (`MODE_STAGE` 28-Capsule Visualizer)
+![Liquid Launcher Music Stage Popup](docs/screenshots/music-stage.jpg)
+
+### Liquid Glass Control Center (Native Rust Blurred Backdrop)
+![Liquid Launcher Control Center](docs/screenshots/control-center.jpg)
+
+</div>
 
 ---
 
@@ -207,6 +226,14 @@ Liquid Launcher ships with **27 default ART verification suites** (plus optional
 # Include live network parallel lyrics check
 .\validation\run-checks.ps1 -Tv 192.168.1.100:5555 -LiveLyrics
 ```
+
+### Continuous Integration & Upstream Maintenance
+
+- **CI Build & Security Gate ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):** Runs on every push and pull request to verify zero leaked secrets/binaries (`scripts/check-maintenance.py --offline`), validate SHA-256 checksums of Maven dependencies, compile all 91 Java overlay modules + ADB bridge + 35 validation classes + D8 DEX archives against Android API 35, and run `cargo check` on the Rust `1.85.1` JNI crate.
+- **Weekly Lyric Provider Health Monitor ([`.github/workflows/provider-health.yml`](.github/workflows/provider-health.yml)):** Automatically probes all 7 parallel HTTPS lyric endpoints every week (and on manual `workflow_dispatch`) and publishes a live latency/status table to the GitHub Actions job summary. You can also run it locally anytime:
+  ```powershell
+  python scripts/check-maintenance.py
+  ```
 
 ---
 
