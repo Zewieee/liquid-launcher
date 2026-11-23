@@ -6,7 +6,7 @@
 
 [![CI Build & Security Audit](https://github.com/Zewieee/liquid-launcher/actions/workflows/ci.yml/badge.svg)](https://github.com/Zewieee/liquid-launcher/actions/workflows/ci.yml)
 [![Lyric Providers Health](https://github.com/Zewieee/liquid-launcher/actions/workflows/provider-health.yml/badge.svg)](https://github.com/Zewieee/liquid-launcher/actions/workflows/provider-health.yml)
-[![Version](https://img.shields.io/badge/release-v3.3--fix.145-0ea5e9?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/release-v3.3--fix.146-0ea5e9?style=flat-square)](CHANGELOG.md)
 [![Android API](https://img.shields.io/badge/Android_TV-API_26%2B-3ddc84?style=flat-square&logo=android&logoColor=white)](#prerequisites)
 [![Rust](https://img.shields.io/badge/Rust-1.85.1_(JNI)-f97316?style=flat-square&logo=rust&logoColor=white)](#architecture)
 [![Page Size](https://img.shields.io/badge/ELF_Alignment-16_KB-6366f1?style=flat-square)](#key-features)
@@ -23,7 +23,7 @@
 
 ## Overview
 
-**Liquid Launcher** is an Android TV launcher overlay crafted around **frameless translucent glass**, **D-pad-first ergonomics**, and **fluid 60fps motion**. Built as a hybrid **Java + zero-dependency Rust/JNI** overlay (91 Java modules, 4 native Rust/C modules, an optional ADB media bridge, and 27 automated on-device ART verification suites), it turns an Android TV home screen into a cohesive living-room media experience—without invasive permissions, background bloat, or closed black-box dependencies.
+**Liquid Launcher** is an Android TV launcher overlay crafted around **frameless translucent glass**, **D-pad-first ergonomics**, and **fluid 60fps motion**. Built as a hybrid **Java + zero-dependency Rust/JNI** overlay (91 Java modules, 4 native Rust/C modules, an optional ADB media bridge, and 28 automated on-device ART verification suites), it turns an Android TV home screen into a cohesive living-room media experience—without invasive permissions, background bloat, or closed black-box dependencies.
 
 > **Copyright & Scope Notice:** This repository contains **100% original overlay source code** (`src/`, `native/`, `bridge/`, `stubs/`, `validation/`, and build tooling). Decompiled third-party base APK assets (`work/`), prebuilt `.apk`/`.jar` binaries, signing keystores, and local environment files are intentionally excluded. See [SECURITY.md](SECURITY.md) and [Quick Start](#quick-start) for build prerequisites.
 
@@ -117,11 +117,11 @@ Android TV devices often operate under strict RAM budgets (1.5–2 GB). Every ho
 
 | Area | Implementation | Benefit |
 | :--- | :--- | :--- |
-| **Connection Handoff** | `SpotifyMetadata.DirectHub` ref-count + `750 ms` grace timer | Zero `MediaBrowser` rebind jitter between Dock and Popup |
-| **60fps Lyrics Canvas** | Cached `FontChoice.faceEpoch()`, `Cell.blank`, memoized `LineBlock` in `RubyLyricsView` | Zero per-frame object allocations during smooth karaoke scrolling |
-| **Worker Lifecycle** | `ThreadPoolExecutor` with `allowCoreThreadTimeOut(true)` across 4 async workers | Idle threads expire automatically when the TV sits on Home or another app |
-| **Unified RAM Trim** | `MemoryTrimmer` hooks `WallpaperTheme`, `LiveLyrics`, `SpotifyMetadata`, `WallpaperThumbLoader`, `RustBlur`, and lazy `MusicBackdropView` buffers | Immediate cache release on `onTrimMemory` / backgrounding |
-| **Instant Popup Lyrics** | 2-second debounced single-track prefetch in `DockMusicPill` (transient RAM only) | Near-`0 ms` lyrics display on popup open with zero disk writes or bulk scraping |
+| **Connection Handoff & Poll** | `SpotifyMetadata.DirectHub` (`750 ms` grace) + `O(1)` `RevisionSlot` ring cache | Zero `MediaBrowser` rebind jitter and zero steady-state `getPixel`/`SHA-256` JNI churn |
+| **60fps Lyrics Canvas** | Cached `FontChoice.faceEpoch()`, `Cell.blank`, codepoint `cpMetrics`, and memoized `LineBlock` in `RubyLyricsView` | Zero per-frame object allocations and zero `Paint.measureText` JNI calls during karaoke sweep |
+| **Worker Lifecycle** | Shared `ThreadPoolExecutor` pools with `allowCoreThreadTimeOut(true)` across async & lyrics workers | Zero per-popup thread spawn churn; idle threads expire automatically |
+| **Unified RAM & JNI Trim** | `MemoryTrimmer` hooks `Shamsi` lens buffers, `WallpaperTheme`, `LiveLyrics`, `SpotifyMetadata`, `WallpaperThumbLoader`, `RustBlur`/`lp_trim`, and `MusicBackdropView` | Immediate Java + C/Rust buffer release (~4+ MB) on `onTrimMemory` / backgrounding |
+| **Instant Popup Lyrics** | 2-second debounced single-track prefetch in `DockMusicPill` + adaptive provider cooldowns | Near-`0 ms` lyrics display on popup open with zero disk writes or bulk scraping |
 
 ---
 
@@ -146,7 +146,7 @@ liquid-launcher/
 ├── stubs/ & stubs-extra/ # Compile-time API stubs for the host launcher layer
 ├── libs/checksums.json   # Pinned SHA-256 hashes for Kuromoji & SnakeYAML jars
 ├── scripts/              # env.ps1 (.env loader) & fetch-libs.ps1 (verified Maven downloader)
-├── validation/           # 35 ART test sources (27 default suites + live network/media checks)
+├── validation/           # 36 ART test sources (28 default suites + live network/media checks)
 ├── package-reading.py    # SHA-256 verifier & Kuromoji dictionary resource packager
 ├── build.ps1             # Parameterized build script (-CompileOnly or full signed APK)
 ├── .env.example          # Local configuration template (copy to gitignored .env)
@@ -213,14 +213,14 @@ Copy-Item .env.example .env
 
 ## On-Device Verification
 
-Liquid Launcher ships with **27 default ART verification suites** (plus optional `-Live` media and `-LiveLyrics` network checks) that execute directly on an Android TV device via `app_process` and automatically clean up temporary files in `/data/local/tmp` when finished:
+Liquid Launcher ships with **28 default ART verification suites** (plus optional `-Live` media and `-LiveLyrics` network checks) that execute directly on an Android TV device via `app_process` and automatically clean up temporary files in `/data/local/tmp` when finished:
 
 ```powershell
 # Build overlay + bridge first
 .\build.ps1 -CompileOnly -SkipNative
 .\bridge\build.ps1
 
-# Run all 27 offline ART suites (metadata, visualizer, lyric matching, ruby layout, memory/perf, security)
+# Run all 28 offline ART suites (metadata, visualizer, lyric matching, ruby layout, memory/perf, security)
 .\validation\run-checks.ps1 -Tv 192.168.1.100:5555
 
 # Include live network parallel lyrics check
@@ -229,7 +229,7 @@ Liquid Launcher ships with **27 default ART verification suites** (plus optional
 
 ### Continuous Integration & Upstream Maintenance
 
-- **CI Build & Security Gate ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):** Runs on every push and pull request to verify zero leaked secrets/binaries (`scripts/check-maintenance.py --offline`), validate SHA-256 checksums of Maven dependencies, compile all 91 Java overlay modules + ADB bridge + 35 validation classes + D8 DEX archives against Android API 35, and run `cargo check` on the Rust `1.85.1` JNI crate.
+- **CI Build & Security Gate ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):** Runs on every push and pull request to verify zero leaked secrets/binaries (`scripts/check-maintenance.py --offline`), validate SHA-256 checksums of Maven dependencies, compile all 91 Java overlay modules + ADB bridge + 36 validation classes + D8 DEX archives against Android API 35, and run `cargo check` on the Rust `1.85.1` JNI crate.
 - **Weekly Lyric Provider Health Monitor ([`.github/workflows/provider-health.yml`](.github/workflows/provider-health.yml)):** Automatically probes all 7 parallel HTTPS lyric endpoints every week (and on manual `workflow_dispatch`) and publishes a live latency/status table to the GitHub Actions job summary. You can also run it locally anytime:
   ```powershell
   python scripts/check-maintenance.py

@@ -2,6 +2,18 @@
 
 All notable changes to the **Liquid Launcher** overlay are documented in this file.
 
+## [3.3-fix.146] - 2026-11-23
+
+### Codebase-Wide Performance & Reliability (Rust/JNI + Java)
+- **Lens RAM Release & Single-Pass Native Kernel (`FastPixelOps`, `pixels.rs`, `pixels_jni.c`, `lib.rs`):** `FastPixelOps.trimMemory` now frees `Shamsi` lens source/result buffers (~4 MB when backgrounded); `pixels.rs` folds finite/bounds validation into a single pass (eliminating `5 × W × H` per-frame pre-scans); `pixels_jni.c` reuses C output buffers and frees them via `RustBlur.trimNative -> lp_trim()`.
+- **Shared Static `LiveLyrics` Worker Pools:** Replaced per-instance `LiveLyrics` thread pools with shared auto-expiring static `WORKER` and `IO_POOL` executors, eliminating 9-thread spawn/teardown churn per popup session.
+- **`O(1)` Artwork Revision Cache (`MochyMediaBrowser`, `SpotifyMetadata`):** Added a 4-slot `RevisionSlot` ring cache keyed by `Bitmap.getGenerationId()`, reducing steady-state 1s metadata polls to `0` `Bitmap.getPixel` JNI calls and `0` `SHA-256` allocations.
+- **Zero-JNI 60fps Karaoke Sweep (`RubyLyricsView`):** Cached cumulative codepoint prefix advances (`cpMetrics`) in `Cell.prefixWidth` so word-synced karaoke rendering makes `0` per-frame `Paint.measureText` JNI calls.
+- **Streaming `sharpen` & Single-Pass HSV Backdrop (`FastPixelOps`, `MusicBackdropView`):** Rewrote `FastPixelOps.sharpen` with rotating 3-row buffers (`-66.7%` `Bitmap.getPixels` JNI calls, bit-exact), folded redundant JNI pre-blurs into `boxBlurAndToneMapWorker`, and reused single-pass HSV worker buffers.
+- **Adaptive `Unison` 404 Cooldown (`LiveLyrics`):** Added a 15-minute cooldown after 2 consecutive HTTP `404` responses from `unison.betterlyrics.org` with dynamic `expectedFast`/`expectedWord` race counts.
+- **Resilient Japanese Ruby Conversion (`JapaneseRomaji`):** Preserved romaji annotations for known Japanese tokens on lyric lines containing rare/unknown Kanji while keeping `alias()` strict for title matching.
+- **Verification:** Added `Fix146ImproveCheck` (28/28 default ART suites, 6,838 assertions passing).
+
 ## [3.3-fix.145] - 2026-11-22
 
 ### Performance & Architecture

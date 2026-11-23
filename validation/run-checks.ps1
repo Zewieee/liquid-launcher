@@ -16,9 +16,16 @@ $dex = Join-Path $PSScriptRoot 'dex'
 New-Item -ItemType Directory -Force $classes, $dex | Out-Null
 
 $loader = Join-Path $release 'build\loader.jar'
+$stubsJar = Join-Path $release 'build\stubs.jar'
+$stubsDir = Join-Path $release 'build\stubs'
 $bridge = Join-Path $release 'bridge\bridge.jar'
 if (-not (Test-Path -LiteralPath $loader)) { throw 'Missing build\loader.jar — run build.ps1 -CompileOnly first.' }
 if (-not (Test-Path -LiteralPath $bridge)) { throw 'Missing bridge\bridge.jar — run bridge\build.ps1 first.' }
+if (-not (Test-Path -LiteralPath $stubsJar)) {
+    if (-not (Test-Path -LiteralPath $stubsDir)) { throw 'Missing build\stubs — run build.ps1 -CompileOnly first.' }
+    & $tc.Jar cf $stubsJar -C $stubsDir .
+    if ($LASTEXITCODE -ne 0) { throw 'Stubs jar packaging failed' }
+}
 
 $readingLibraries = @(Get-ChildItem (Join-Path $release 'libs') -Filter '*.jar' | ForEach-Object FullName)
 $readingClasspath = $readingLibraries -join ';'
@@ -26,7 +33,7 @@ $readingClasspath = $readingLibraries -join ';'
 $names = @(
     'CheckRunner', 'MetadataCheck', 'MultiMediaCheck', 'DirectMediaCheck', 'GenericMediaCheck',
     'BitChordLyricsCheck', 'Fix140LyricsCheck', 'Fix141Check', 'Fix142Check', 'Fix143VisualizerCheck',
-    'Fix144AccuracyCheck', 'Fix145OptimizeCheck', 'LiveParallelLyricsCheck', 'GalleryCheck',
+    'Fix144AccuracyCheck', 'Fix145OptimizeCheck', 'Fix146ImproveCheck', 'LiveParallelLyricsCheck', 'GalleryCheck',
     'SpotifyIdCheck', 'LiveMediaCheck', 'SourceChainCheck', 'ExtraSourcesCheck', 'RecordingCheck',
     'AggregateCheck', 'LatencyCheck', 'ProgressStateCheck', 'ProviderFormatCheck', 'CandidateCheck',
     'ManualLyricsCheck', 'RomajiCheck', 'KaraokeCheck', 'RubyLayoutCheck',
@@ -34,7 +41,7 @@ $names = @(
 )
 $sources = @($names | ForEach-Object { Join-Path $PSScriptRoot "$_.java" })
 
-& $tc.Javac -encoding UTF-8 -source 8 -target 8 -classpath "$($tc.AndroidJar);$loader;$bridge;$readingClasspath" -d $classes @sources
+& $tc.Javac -encoding UTF-8 -source 8 -target 8 -classpath "$($tc.AndroidJar);$stubsJar;$loader;$bridge;$readingClasspath" -d $classes @sources
 if ($LASTEXITCODE -ne 0) { throw 'Check compilation failed' }
 
 $testJar = Join-Path $PSScriptRoot 'checks.jar'
@@ -43,7 +50,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Check jar packaging failed' }
 
 $checkArchive = Join-Path $dex 'checks-bundle.jar'
 if (Test-Path -LiteralPath $checkArchive) { Remove-Item -LiteralPath $checkArchive -Force }
-& "$($tc.BuildTools)\d8.bat" --release --min-api 26 --lib $tc.AndroidJar --output $checkArchive $testJar $loader @readingLibraries
+& "$($tc.BuildTools)\d8.bat" --release --min-api 26 --lib $tc.AndroidJar --output $checkArchive $testJar $stubsJar $loader @readingLibraries
 if ($LASTEXITCODE -ne 0) { throw 'Check dex packaging failed' }
 
 & python (Join-Path $release 'package-reading.py') 'validation/dex/checks-bundle.jar'
@@ -61,6 +68,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Bridge dex push failed' }
 
     $checks = @(
+        'local.launcherfix.Fix146ImproveCheck',
         'local.launcherfix.Fix145OptimizeCheck',
         'local.launcherfix.Fix144AccuracyCheck',
         'local.launcherfix.Fix143VisualizerCheck',

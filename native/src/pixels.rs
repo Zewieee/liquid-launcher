@@ -84,11 +84,15 @@ unsafe extern "C" fn icon_kernel(input:*const i32, output:*mut i32, len:i32,w:i3
 }
 
 #[inline(always)]
+fn clamp_finite(v:f32, lo:f32, hi:f32)->f32 {
+    if v>=lo { if v<=hi {v} else {hi} } else {lo}
+}
+
+#[inline(always)]
 fn sample(src:&[i32],sw:usize,sh:usize,x:f32,y:f32,shift:u32)->i32 {
-    let cx=clamp(x-0.5,0.0,sw as f32-1.001);let cy=clamp(y-0.5,0.0,sh as f32-1.001);
-    // Inputs are finite and clamped to [0, dimension-1.001], dimensions <=8192.
-    let ix=unsafe {cx.to_int_unchecked::<u32>()} as usize;
-    let iy=unsafe {cy.to_int_unchecked::<u32>()} as usize;
+    let cx=clamp_finite(x-0.5,0.0,sw as f32-1.001);let cy=clamp_finite(y-0.5,0.0,sh as f32-1.001);
+    let ix=(cx as u32) as usize;
+    let iy=(cy as u32) as usize;
     let fx=cx-ix as f32;let fy=cy-iy as f32;
     let at=iy*sw+ix;
     let a=(src[at] as u32>>shift)&255;let b=(src[at+1] as u32>>shift)&255;
@@ -99,10 +103,9 @@ fn sample(src:&[i32],sw:usize,sh:usize,x:f32,y:f32,shift:u32)->i32 {
 
 #[inline(always)]
 fn sample_rgb(src:&[i32],sw:usize,sh:usize,x:f32,y:f32)->[i32;3] {
-    let cx=clamp(x-0.5,0.0,sw as f32-1.001);let cy=clamp(y-0.5,0.0,sh as f32-1.001);
-    // Same finite/clamped bounds as sample().
-    let ix=unsafe {cx.to_int_unchecked::<u32>()} as usize;
-    let iy=unsafe {cy.to_int_unchecked::<u32>()} as usize;
+    let cx=clamp_finite(x-0.5,0.0,sw as f32-1.001);let cy=clamp_finite(y-0.5,0.0,sh as f32-1.001);
+    let ix=(cx as u32) as usize;
+    let iy=(cy as u32) as usize;
     let fx=cx-ix as f32;let fy=cy-iy as f32;
     let at=iy*sw+ix;
     let a=src[at] as u32;let b=src[at+1] as u32;let c=src[at+sw] as u32;let d=src[at+sw+1] as u32;
@@ -127,8 +130,7 @@ unsafe extern "C" fn lens_kernel(input:*const i32,output:*mut i32,alpha:*const i
         let ox=std::slice::from_raw_parts(ox,n);let oy=std::slice::from_raw_parts(oy,n);
         let disp=std::slice::from_raw_parts(disp,n);let spec=std::slice::from_raw_parts(spec,n);
         if [x,y,lw,lh,strength,glass].iter().any(|v| !v.is_finite() || v.abs()>1e6)
-            || lw<=0.0 || lh<=0.0 || alpha.iter().any(|&v| !(0..=255).contains(&v))
-            || ox.iter().chain(oy).chain(disp).chain(spec).any(|v| !v.is_finite() || v.abs()>1e6) {return false;}
+            || lw<=0.0 || lh<=0.0 {return false;}
         let glass=clamp(glass,0.0,1.0);
         let strength=(0.6*glass+1.0)*strength.max(0.0);let highlight=1.0-glass*0.35;
         let dx=lw/w as f32;let dy=lh/h as f32;
@@ -136,9 +138,12 @@ unsafe extern "C" fn lens_kernel(input:*const i32,output:*mut i32,alpha:*const i
             let py=(row as f32+0.5)*dy+y;
             for col in 0..w {
                 let at=(row*w+col) as usize;let a=alpha[at];
+                if !(0..=255).contains(&a) {return false;}
                 if a==0 {dst[at]=0;continue;}
-                let px=(col as f32+0.5)*dx+x;let sx=ox[at]*strength;let sy=oy[at]*strength;
-                let red=1.0-disp[at];let blue=disp[at]+1.0;
+                let oxv=ox[at];let oyv=oy[at];let dv=disp[at];let spv=spec[at];
+                if !(oxv.abs()<=1e6 && oyv.abs()<=1e6 && dv.abs()<=1e6 && spv.abs()<=1e6) {return false;}
+                let px=(col as f32+0.5)*dx+x;let sx=oxv*strength;let sy=oyv*strength;
+                let red=1.0-dv;let blue=dv+1.0;
                 let rx=sx*red+px;let ry=red*sy+py;
                 let gx=px+sx;let gy=py+sy;
                 let bx=sx*blue+px;let by=sy*blue+py;
@@ -149,7 +154,7 @@ unsafe extern "C" fn lens_kernel(input:*const i32,output:*mut i32,alpha:*const i
                     sample(src,sw as usize,sh as usize,gx,gy,8),
                     sample(src,sw as usize,sh as usize,bx,by,0)
                 ]};
-                let sp=spec[at]*highlight;
+                let sp=spv*highlight;
                 let r=((r as f32*0.97+7.65+sp) as i32).clamp(0,255);
                 let g=((g as f32*0.97+7.65+sp) as i32).clamp(0,255);
                 let b=((b as f32*0.97+7.65+sp) as i32).clamp(0,255);

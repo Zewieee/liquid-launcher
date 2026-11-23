@@ -176,6 +176,7 @@ final class SpotifyMetadata {
 
     static void trimMemory(int level) {
         if (level >= 20 || level == 10 || level == 15) {
+            MochyMediaBrowser.trimMemory();
             DirectHub hub = DirectHub.peek();
             if (hub != null) hub.trimImmediate();
         }

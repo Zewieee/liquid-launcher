@@ -11,6 +11,10 @@ import java.util.Arrays;
 public final class FastPixelOps {
     private static final Object SHARPEN_LOCK = new Object();
     private static final Object BLUR_LOCK = new Object();
+    private static int[] sharpenRow0 = new int[0];
+    private static int[] sharpenRow1 = new int[0];
+    private static int[] sharpenRow2 = new int[0];
+    private static int[] sharpenOut = new int[0];
     private static int[] blurPixels = new int[0];
     private static int[] blurR = new int[0];
     private static int[] blurG = new int[0];
@@ -34,34 +38,56 @@ public final class FastPixelOps {
 
     private FastPixelOps() {}
 
-    /** Mild unsharp mask for covers that are enlarged for the popup; keeps source pixels bounded. */
+    /** Mild unsharp mask for covers that are enlarged for the popup; rotates 3 row buffers (1 getPixels/row). */
     public static Bitmap sharpen(Bitmap bitmap, float amount) {
         if (bitmap == null || bitmap.isRecycled() || amount <= 0f) return bitmap;
         int width = bitmap.getWidth(), height = bitmap.getHeight();
         if (width < 3 || height < 3) return bitmap;
         synchronized (SHARPEN_LOCK) {
-            int[] prev = new int[width], curr = new int[width], next = new int[width], out = new int[width];
+            if (sharpenRow0.length < width) {
+                sharpenRow0 = new int[width];
+                sharpenRow1 = new int[width];
+                sharpenRow2 = new int[width];
+                sharpenOut = new int[width];
+            }
+            int[] prev = sharpenRow0, curr = sharpenRow1, next = sharpenRow2, out = sharpenOut;
+            bitmap.getPixels(curr, 0, width, 0, 0, width, 1);
+            System.arraycopy(curr, 0, prev, 0, width);
+            bitmap.getPixels(next, 0, width, 0, 1, width, 1);
             for (int y = 0; y < height; y++) {
-                bitmap.getPixels(curr, 0, width, 0, y, width, 1);
-                bitmap.getPixels(prev, 0, width, 0, Math.max(0, y - 1), width, 1);
-                bitmap.getPixels(next, 0, width, 0, Math.min(height - 1, y + 1), width, 1);
                 for (int x = 0; x < width; x++) {
                     int center = curr[x];
-                    int sumR = 0, sumG = 0, sumB = 0;
-                    for (int dy = -1; dy <= 1; dy++) {
-                        int[] row = dy < 0 ? prev : dy > 0 ? next : curr;
-                        for (int dx = -1; dx <= 1; dx++) {
-                            if (dx == 0 && dy == 0) continue;
-                            int p = row[Math.max(0, Math.min(width - 1, x + dx))];
-                            sumR += (p >> 16) & 255; sumG += (p >> 8) & 255; sumB += p & 255;
-                        }
-                    }
-                    int r = clampByte(((center >> 16) & 255) + amount * (((center >> 16) & 255) - sumR / 8f));
-                    int g = clampByte(((center >> 8) & 255) + amount * (((center >> 8) & 255) - sumG / 8f));
-                    int b = clampByte((center & 255) + amount * ((center & 255) - sumB / 8f));
+                    int xm1 = x > 0 ? x - 1 : 0;
+                    int xp1 = x + 1 < width ? x + 1 : width - 1;
+                    int p00 = prev[xm1], p01 = prev[x], p02 = prev[xp1];
+                    int p10 = curr[xm1],                p12 = curr[xp1];
+                    int p20 = next[xm1], p21 = next[x], p22 = next[xp1];
+                    int sumR = ((p00 >> 16) & 255) + ((p01 >> 16) & 255) + ((p02 >> 16) & 255)
+                        + ((p10 >> 16) & 255) + ((p12 >> 16) & 255)
+                        + ((p20 >> 16) & 255) + ((p21 >> 16) & 255) + ((p22 >> 16) & 255);
+                    int sumG = ((p00 >> 8) & 255) + ((p01 >> 8) & 255) + ((p02 >> 8) & 255)
+                        + ((p10 >> 8) & 255) + ((p12 >> 8) & 255)
+                        + ((p20 >> 8) & 255) + ((p21 >> 8) & 255) + ((p22 >> 8) & 255);
+                    int sumB = (p00 & 255) + (p01 & 255) + (p02 & 255)
+                        + (p10 & 255) + (p12 & 255)
+                        + (p20 & 255) + (p21 & 255) + (p22 & 255);
+                    int r = clampByte(((center >> 16) & 255) + amount * (((center >> 16) & 255) - sumR * 0.125f));
+                    int g = clampByte(((center >> 8) & 255) + amount * (((center >> 8) & 255) - sumG * 0.125f));
+                    int b = clampByte((center & 255) + amount * ((center & 255) - sumB * 0.125f));
                     out[x] = (center & 0xff000000) | (r << 16) | (g << 8) | b;
                 }
                 bitmap.setPixels(out, 0, width, 0, y, width, 1);
+                if (y + 1 < height) {
+                    int[] recycledRow = prev;
+                    prev = curr;
+                    curr = next;
+                    next = recycledRow;
+                    if (y + 2 < height) {
+                        bitmap.getPixels(next, 0, width, 0, y + 2, width, 1);
+                    } else {
+                        System.arraycopy(curr, 0, next, 0, width);
+                    }
+                }
             }
         }
         return bitmap;
@@ -247,9 +273,9 @@ public final class FastPixelOps {
 
             int generationId = bitmap.getGenerationId();
             if (Shamsi.sourceBitmap != bitmap || Shamsi.sourceGeneration != generationId
-                    || Shamsi.sourceW != width2 || Shamsi.sourceH != height2) {
+                    || Shamsi.sourceW != width2 || Shamsi.sourceH != height2 || Shamsi.sourcePixels == null) {
                 int count = width2 * height2;
-                if (Shamsi.sourcePixels.length < count) {
+                if (Shamsi.sourcePixels == null || Shamsi.sourcePixels.length < count) {
                     Shamsi.sourcePixels = new int[count];
                 }
                 bitmap.getPixels(Shamsi.sourcePixels, 0, width2, 0, 0, width2, height2);
@@ -259,7 +285,7 @@ public final class FastPixelOps {
                 Shamsi.sourceH = height2;
             }
             int outCount = width * height;
-            if (Shamsi.resultPixels.length < outCount) {
+            if (Shamsi.resultPixels == null || Shamsi.resultPixels.length < outCount) {
                 Shamsi.resultPixels = new int[outCount];
             }
             float f9 = LIGHT_X;
@@ -576,9 +602,15 @@ public final class FastPixelOps {
     /** Release reusable pixel buffers and cached lens geometries under memory pressure. */
     public static void trimMemory(int level) {
         if (level < 20 && level != 10 && level != 15) return;
+        int[] empty = new int[0];
+        synchronized (SHARPEN_LOCK) {
+            sharpenRow0 = empty;
+            sharpenRow1 = empty;
+            sharpenRow2 = empty;
+            sharpenOut = empty;
+        }
         synchronized (BLUR_LOCK) {
             RustBlur.trim();
-            int[] empty = new int[0];
             blurPixels = empty;
             blurR = empty;
             blurG = empty;
@@ -590,6 +622,12 @@ public final class FastPixelOps {
         synchronized (Shamsi.class) {
             Arrays.fill(Shamsi.CACHE, null);
             Shamsi.nextCache = 0;
+            Shamsi.sourceBitmap = null;
+            Shamsi.sourceGeneration = -1;
+            Shamsi.sourceW = 0;
+            Shamsi.sourceH = 0;
+            Shamsi.sourcePixels = empty;
+            Shamsi.resultPixels = empty;
         }
         WallpaperTheme.trimCache();
     }

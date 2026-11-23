@@ -99,6 +99,10 @@ extern "C" {
     fn AndroidBitmap_unlockPixels(env: *mut c_void, bitmap: *mut c_void) -> c_int;
 }
 
+extern "C" {
+    fn lp_trim();
+}
+
 struct PixelLock {
     env: *mut c_void,
     bitmap: *mut c_void,
@@ -163,5 +167,6 @@ pub unsafe extern "system" fn Java_local_launcherfix_RustBlur_blurNative(
 pub extern "system" fn Java_local_launcherfix_RustBlur_trimNative(_env: *mut c_void, _class: *mut c_void) {
     let _ = catch_unwind(|| {
         if let Ok(mut buffers) = BUFFERS.lock() { *buffers = Buffers { rgb: Vec::new(), temporary: Vec::new() }; }
+        unsafe { lp_trim(); }
     });
 }

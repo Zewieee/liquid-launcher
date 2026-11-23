@@ -13,13 +13,64 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import java.lang.ref.WeakReference;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.UUID;
 
 /** Public player connection used when the shell-owned media bridge is unavailable. */
 final class MochyMediaBrowser {
+    private static final class RevisionSlot {
+        final String baseIdentity;
+        final WeakReference<Bitmap> artRef;
+        final boolean hasArt;
+        final int artGen, artW, artH;
+        final String hex;
+        RevisionSlot(String baseIdentity, Bitmap art, int artGen, int artW, int artH, String hex) {
+            this.baseIdentity = baseIdentity;
+            this.hasArt = art != null;
+            this.artRef = art != null ? new WeakReference<>(art) : null;
+            this.artGen = artGen;
+            this.artW = artW;
+            this.artH = artH;
+            this.hex = hex;
+        }
+        boolean matches(String identity, Bitmap art, int gen, int w, int h) {
+            if (!baseIdentity.equals(identity) || hasArt != (art != null)) return false;
+            if (!hasArt) return true;
+            return artGen == gen && artW == w && artH == h && artRef != null && artRef.get() == art;
+        }
+    }
+
+    private static final RevisionSlot[] REVISION_CACHE = new RevisionSlot[4];
+    private static int sNextRevisionSlot;
+    private static int sRevisionCacheHits;
+
+    static synchronized void trimMemory() {
+        Arrays.fill(REVISION_CACHE, null);
+        sNextRevisionSlot = 0;
+    }
+
+    static synchronized int revisionCacheHits() {
+        return sRevisionCacheHits;
+    }
+
+    private static synchronized String lookupCachedRevision(String baseIdentity, Bitmap art, int gen, int w, int h) {
+        for (RevisionSlot slot : REVISION_CACHE) {
+            if (slot != null && slot.matches(baseIdentity, art, gen, w, h)) {
+                sRevisionCacheHits++;
+                return slot.hex;
+            }
+        }
+        return null;
+    }
+
+    private static synchronized void storeCachedRevision(String baseIdentity, Bitmap art, int gen, int w, int h, String hex) {
+        REVISION_CACHE[sNextRevisionSlot] = new RevisionSlot(baseIdentity, art, gen, w, h, hex);
+        sNextRevisionSlot = (sNextRevisionSlot + 1) & 3;
+    }
     static final String PACKAGE = "com.mochyy.mochymusic";
     private static final ComponentName SERVICE = new ComponentName(PACKAGE, PACKAGE + ".playback.MusicService");
     private static final long CONNECT_TIMEOUT_MS = 8000L, RETRY_MS = 15000L;
@@ -219,27 +270,46 @@ final class MochyMediaBrowser {
             .append('\n').append(album).append('\n').append(duration).append('\n')
             .append(first(metadata, MediaMetadata.METADATA_KEY_MEDIA_ID));
         if (!youtubeId.isEmpty()) identity.append('\n').append(youtubeId);
+        String baseIdentity = identity.toString();
+        int artW = 0, artH = 0, artGen = -1;
         if (borrowed != null) {
-            int withoutArt = identity.length();
             try {
-                identity.append(':').append(borrowed.getWidth()).append('x').append(borrowed.getHeight());
-                for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
-                    identity.append(':').append(borrowed.getPixel((2*x+1)*borrowed.getWidth()/16, (2*y+1)*borrowed.getHeight()/16));
+                artW = borrowed.getWidth();
+                artH = borrowed.getHeight();
+                artGen = borrowed.getGenerationId();
             } catch (RuntimeException unreadableArt) {
-                identity.setLength(withoutArt);
                 borrowed = null;
             }
         }
-        byte[] digest = MessageDigest.getInstance("SHA-256").digest(identity.toString().getBytes(StandardCharsets.UTF_8));
-        StringBuilder hex = new StringBuilder(64);
-        for (byte value : digest) hex.append(Character.forDigit((value >> 4) & 15, 16)).append(Character.forDigit(value & 15, 16));
+        String revisionHex = lookupCachedRevision(baseIdentity, borrowed, artGen, artW, artH);
+        if (revisionHex == null) {
+            if (borrowed != null) {
+                int withoutArt = identity.length();
+                try {
+                    identity.append(':').append(artW).append('x').append(artH);
+                    for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
+                        identity.append(':').append(borrowed.getPixel((2*x+1)*artW/16, (2*y+1)*artH/16));
+                    artGen = borrowed.getGenerationId();
+                } catch (RuntimeException unreadableArt) {
+                    identity.setLength(withoutArt);
+                    borrowed = null;
+                    artW = artH = 0;
+                    artGen = -1;
+                }
+            }
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(identity.toString().getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(64);
+            for (byte value : digest) hex.append(Character.forDigit((value >> 4) & 15, 16)).append(Character.forDigit(value & 15, 16));
+            revisionHex = hex.toString();
+            storeCachedRevision(baseIdentity, borrowed, artGen, artW, artH, revisionHex);
+        }
         SpotifyMetadata.Response response = new SpotifyMetadata.Response();
         response.version = 2; response.source = packageName; response.sessionId = id;
         response.sources = new SpotifyMetadata.Source[]{new SpotifyMetadata.Source(id, packageName, label, state.getState())};
         response.title = title; response.artist = artist; response.album = album;
         response.youtubeId = youtubeId;
         response.liveLyric = liveLyric;
-        response.actions = state.getActions(); response.revision = hex.toString();
+        response.actions = state.getActions(); response.revision = revisionHex;
         response.playback = new MusicPlayback(true, duration, state.getPosition(), state.getLastPositionUpdateTime(),
             state.getPlaybackSpeed(), state.getState());
         response.unchanged = response.revision.equals(knownRevision);

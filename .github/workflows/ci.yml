@@ -54,6 +54,7 @@ jobs:
           echo "1. Compiling host stubs..."
           find stubs stubs-extra -name '*.java' > build/stubs.list
           javac -encoding UTF-8 -source 8 -target 8 -classpath "$ANDROID_JAR" -d build/stubs @build/stubs.list
+          jar cf build/stubs.jar -C build/stubs .
 
           echo "2. Compiling 91 Java overlay modules..."
           find src -name '*.java' > build/sources.list
@@ -67,11 +68,11 @@ jobs:
           jar cf bridge/bridge.jar -C bridge/classes .
           "$D8" --release --min-api 26 --lib "$ANDROID_JAR" --output bridge/dex bridge/bridge.jar
 
-          echo "4. Compiling 35 ART verification suites..."
+          echo "4. Compiling 36 ART verification suites..."
           find validation -name '*.java' > build/validation.list
-          javac -encoding UTF-8 -source 8 -target 8 -classpath "$ANDROID_JAR:build/loader.jar:bridge/bridge.jar:$LIBS_CP" -d validation/classes @build/validation.list
+          javac -encoding UTF-8 -source 8 -target 8 -classpath "$ANDROID_JAR:build/stubs.jar:build/loader.jar:bridge/bridge.jar:$LIBS_CP" -d validation/classes @build/validation.list
           jar cf validation/checks.jar -C validation/classes .
-          "$D8" --release --min-api 26 --lib "$ANDROID_JAR" --output validation/dex/checks-bundle.jar validation/checks.jar build/loader.jar libs/*.jar
+          "$D8" --release --min-api 26 --lib "$ANDROID_JAR" --output validation/dex/checks-bundle.jar validation/checks.jar build/stubs.jar build/loader.jar libs/*.jar
           python3 package-reading.py validation/dex/checks-bundle.jar
 
       - name: Check Rust JNI Engine (1.85.1)

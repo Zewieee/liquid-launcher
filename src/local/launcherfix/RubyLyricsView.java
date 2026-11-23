@@ -30,11 +30,49 @@ final class RubyLyricsView extends View {
         final int cpStart, cpEnd;
         final String surface, romaji;
         final boolean blank;
+        private Paint cachedPaint;
+        private float cachedTextSize;
+        private Typeface cachedTypeface;
+        private float[] cpMetrics; // [0..totalCp] = prefix widths, [totalCp+1..2*totalCp] = codepoint advances
         Cell(float x, float cellW, float jpW, float roW, int cpStart, int cpEnd, String surface, String romaji) {
             this.x = x; this.cellW = cellW; this.jpW = jpW; this.roW = roW;
             this.cpStart = cpStart; this.cpEnd = cpEnd;
             this.surface = surface; this.romaji = romaji;
             this.blank = surface == null || surface.trim().isEmpty();
+        }
+        float prefixWidth(double localCodePoints, Paint paint) {
+            if (localCodePoints <= 0 || surface == null || surface.isEmpty()) return 0f;
+            float sz = paint.getTextSize();
+            Typeface tf = paint.getTypeface();
+            float[] m = cpMetrics;
+            if (m == null || cachedPaint != paint || cachedTextSize != sz || cachedTypeface != tf) {
+                int totalCp = surface.codePointCount(0, surface.length());
+                m = new float[totalCp * 2 + 1];
+                int prevOff = 0;
+                for (int i = 0; i < totalCp; i++) {
+                    int nextOff = surface.offsetByCodePoints(prevOff, 1);
+                    m[i + 1] = paint.measureText(surface, 0, nextOff);
+                    m[totalCp + 1 + i] = paint.measureText(surface, prevOff, nextOff);
+                    prevOff = nextOff;
+                }
+                cpMetrics = m;
+                cachedPaint = paint;
+                cachedTextSize = sz;
+                cachedTypeface = tf;
+            }
+            int totalCp = (m.length - 1) / 2;
+            if (totalCp <= 0) return 0f;
+            double clamped = Math.min(localCodePoints, totalCp);
+            int whole = (int) clamped;
+            float width = m[whole];
+            float fraction = (float) (clamped - whole);
+            if (fraction > 0f && whole < totalCp) {
+                width += m[totalCp + 1 + whole] * fraction;
+            }
+            return width;
+        }
+        boolean hasCachedPrefixWidths() {
+            return cpMetrics != null;
         }
     }
 
@@ -636,8 +674,8 @@ final class RubyLyricsView extends View {
                         }
                     }
 
-                    // 2. Soft feathered LinearGradient sweep across the Japanese glyphs.
-                    float rawSplit = prefixWidth(cell.surface, covered - cell.cpStart, activeJpPaint);
+                    // 2. Soft feathered LinearGradient sweep across the Japanese glyphs (O(1) cached codepoint advances).
+                    float rawSplit = cell.prefixWidth(covered - cell.cpStart, activeJpPaint);
                     float normSplit = cell.jpW > 0.5f ? (rawSplit / cell.jpW) : u;
                     float frontierX = (jpX - rampHalf) + normSplit * (cell.jpW + 2f * rampHalf);
                     sweepMatrix.setScale(featherSpan, 1f);

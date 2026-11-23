@@ -93,9 +93,12 @@ final class MusicBackdropView extends View {
         return WORKER.allowsCoreThreadTimeOut();
     }
 
-    // Worker-thread-only reusable scratch buffers (160x90 = 57.6 KB each), lazily allocated & released on trimMemory.
+    // Worker-thread-only reusable scratch buffers (160x90), lazily allocated & released on trimMemory.
     private static volatile int[] sWorkerPx;
     private static volatile int[] sWorkerTmp;
+    private static volatile float[] sWorkerH;
+    private static volatile float[] sWorkerS;
+    private static volatile float[] sWorkerMax;
 
     // UI-thread 1-track full-resolution composed backdrop cache (evicted on Home stop/trim)
     private static WeakReference<MusicBackdropView> sActiveView = new WeakReference<>(null);
@@ -150,6 +153,9 @@ final class MusicBackdropView extends View {
         if (level >= 20 || level == 10 || level == 15) {
             sWorkerPx = null;
             sWorkerTmp = null;
+            sWorkerH = null;
+            sWorkerS = null;
+            sWorkerMax = null;
             if (Looper.myLooper() == Looper.getMainLooper()) {
                 evictCacheMain();
             } else {
@@ -700,11 +706,7 @@ final class MusicBackdropView extends View {
             rightSample.recycle();
         }
 
-        try {
-            FastPixelOps.blur(small);
-            FastPixelOps.blur(small);
-        } catch (Throwable ignored) {}
-        boxBlurAndToneMapWorker(small, 20, 3, outDomHsv);
+        boxBlurAndToneMapWorker(small, 21, 3, outDomHsv);
         return small;
     }
 
@@ -767,16 +769,28 @@ final class MusicBackdropView extends View {
     }
 
     static void toneMapPixelsFast(int[] px, float[] outDomHsv) {
+        int n = px.length;
+        float[] hArr, sArr, mArr;
+        if (n == ATMO_W * ATMO_H && Thread.currentThread().getName().equals("music-backdrop")) {
+            hArr = sWorkerH; if (hArr == null || hArr.length < n) { hArr = new float[n]; sWorkerH = hArr; }
+            sArr = sWorkerS; if (sArr == null || sArr.length < n) { sArr = new float[n]; sWorkerS = sArr; }
+            mArr = sWorkerMax; if (mArr == null || mArr.length < n) { mArr = new float[n]; sWorkerMax = mArr; }
+        } else {
+            hArr = new float[n];
+            sArr = new float[n];
+            mArr = new float[n];
+        }
+
         double sumCos = 0, sumSin = 0, sumS = 0, weightSum = 0;
         final float inv255 = 1f / 255f;
 
-        for (int i = 0; i < px.length; i += 3) {
+        // Single RGB -> HSV pass: caches (h, s, max) for all pixels while sampling stride-3 circular hue mean.
+        for (int i = 0, sampleCountdown = 0; i < n; i++) {
             int c = px[i];
             float rf = ((c >> 16) & 255) * inv255;
             float gf = ((c >> 8) & 255) * inv255;
             float bf = (c & 255) * inv255;
             float max = rf > gf ? (rf > bf ? rf : bf) : (gf > bf ? gf : bf);
-            if (max < 0.04f || max > 0.97f) continue;
             float min = rf < gf ? (rf < bf ? rf : bf) : (gf < bf ? gf : bf);
             float delta = max - min;
             float s = max <= 0f ? 0f : (delta / max);
@@ -791,13 +805,23 @@ final class MusicBackdropView extends View {
                 h = 60f * (((rf - gf) / delta) + 4f);
             }
             if (h < 0f) h += 360f;
+            hArr[i] = h;
+            sArr[i] = s;
+            mArr[i] = max;
 
-            double wt = 0.15 + s * 0.85;
-            double rad = h * (Math.PI / 180.0);
-            sumCos += Math.cos(rad) * wt;
-            sumSin += Math.sin(rad) * wt;
-            sumS += s * wt;
-            weightSum += wt;
+            if (sampleCountdown == 0) {
+                sampleCountdown = 2;
+                if (max >= 0.04f && max <= 0.97f) {
+                    double wt = 0.15 + s * 0.85;
+                    double rad = h * (Math.PI / 180.0);
+                    sumCos += Math.cos(rad) * wt;
+                    sumSin += Math.sin(rad) * wt;
+                    sumS += s * wt;
+                    weightSum += wt;
+                }
+            } else {
+                sampleCountdown--;
+            }
         }
 
         float domH = 212f, domS = 0.14f;
@@ -811,26 +835,10 @@ final class MusicBackdropView extends View {
         outDomHsv[0] = domH;
         outDomHsv[1] = domS;
 
-        for (int i = 0; i < px.length; i++) {
-            int col = px[i];
-            float rf = ((col >> 16) & 255) * inv255;
-            float gf = ((col >> 8) & 255) * inv255;
-            float bf = (col & 255) * inv255;
-            float max = rf > gf ? (rf > bf ? rf : bf) : (gf > bf ? gf : bf);
-            float min = rf < gf ? (rf < bf ? rf : bf) : (gf < bf ? gf : bf);
-            float delta = max - min;
-            float s = max <= 0f ? 0f : (delta / max);
-            float h;
-            if (delta <= 1e-6f) {
-                h = 0f;
-            } else if (max == rf) {
-                h = 60f * (((gf - bf) / delta) % 6f);
-            } else if (max == gf) {
-                h = 60f * (((bf - rf) / delta) + 2f);
-            } else {
-                h = 60f * (((rf - gf) / delta) + 4f);
-            }
-            if (h < 0f) h += 360f;
+        for (int i = 0; i < n; i++) {
+            float h = hArr[i];
+            float s = sArr[i];
+            float max = mArr[i];
 
             if (s < 0.035f && domS > 0.05f) {
                 h = domH;

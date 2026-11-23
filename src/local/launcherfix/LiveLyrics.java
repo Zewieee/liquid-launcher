@@ -31,7 +31,8 @@ import java.util.concurrent.TimeUnit;
 
 /** Bounded parallel keyless lookup per track while the popup is visible. Never sends account credentials. */
 final class LiveLyrics {
-    private static final String USER_AGENT = "LiquidLauncher/145 (Android TV lyrics; com.gathin.tvhome.liquid)";
+    private static final String USER_AGENT = "LiquidLauncher/146 (Android TV lyrics; com.gathin.tvhome.liquid)";
+    static final long UNISON_404_COOLDOWN_MS = 15L * 60L * 1000L;
     private final android.content.Context context;
     interface Listener { void onLyrics(Lyrics lyrics, String status); }
     static final class Result {
@@ -57,14 +58,16 @@ final class LiveLyrics {
         @Override protected boolean removeEldestEntry(Map.Entry<String,Result> eldest) { return size() > 8; }
     };
     private static final Map<String,Long> BLOCKED_UNTIL=new LinkedHashMap<>();
+    private static int sUnisonConsecutive404;
     private static final Object PREFETCH_LOCK = new Object();
     private static LiveLyrics sPrefetcher;
     private static String sPrefetchKey = "";
 
+    private static final ThreadPoolExecutor WORKER = createWorker();
+    private static final ThreadPoolExecutor IO_POOL = createIoPool();
+
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Listener listener;
-    private final ThreadPoolExecutor worker = createWorker();
-    private final ExecutorService pool = createIoPool();
     private static ThreadPoolExecutor createWorker() {
         ThreadPoolExecutor exec = new ThreadPoolExecutor(1, 1, 20L, TimeUnit.SECONDS, new LinkedBlockingQueue<>(), task -> {
             Thread thread = new Thread(task, "music-lyrics");
@@ -75,7 +78,7 @@ final class LiveLyrics {
         exec.allowCoreThreadTimeOut(true);
         return exec;
     }
-    private static ExecutorService createIoPool() {
+    private static ThreadPoolExecutor createIoPool() {
         ThreadPoolExecutor exec = new ThreadPoolExecutor(8, 8, 15L, TimeUnit.SECONDS, new LinkedBlockingQueue<>(), task -> {
             Thread thread = new Thread(task, "music-lyrics-io");
             thread.setPriority(Thread.MIN_PRIORITY);
@@ -87,7 +90,41 @@ final class LiveLyrics {
     }
 
     boolean workerAllowsCoreTimeout() {
-        return worker.allowsCoreThreadTimeOut();
+        return WORKER.allowsCoreThreadTimeOut() && IO_POOL.allowsCoreThreadTimeOut();
+    }
+
+    static boolean isHostBlocked(String host, long nowElapsed) {
+        synchronized (BLOCKED_UNTIL) {
+            Long blocked = BLOCKED_UNTIL.get(host);
+            if (blocked == null) return false;
+            if (nowElapsed < blocked) return true;
+            BLOCKED_UNTIL.remove(host);
+            return false;
+        }
+    }
+
+    static boolean recordUnisonStatus(int httpStatus, long nowElapsed) {
+        synchronized (BLOCKED_UNTIL) {
+            if (httpStatus == 200) {
+                sUnisonConsecutive404 = 0;
+                BLOCKED_UNTIL.remove("unison.betterlyrics.org");
+                return false;
+            }
+            if (httpStatus == 404 && ++sUnisonConsecutive404 >= 2) {
+                long until = nowElapsed > Long.MAX_VALUE - UNISON_404_COOLDOWN_MS
+                    ? Long.MAX_VALUE : nowElapsed + UNISON_404_COOLDOWN_MS;
+                BLOCKED_UNTIL.put("unison.betterlyrics.org", until);
+                return true;
+            }
+            return false;
+        }
+    }
+
+    static void resetCooldownsForTest() {
+        synchronized (BLOCKED_UNTIL) {
+            BLOCKED_UNTIL.clear();
+            sUnisonConsecutive404 = 0;
+        }
     }
 
     static String buildKey(String title, String artist, String album, String spotifyId, String youtubeId, long duration) {
@@ -246,7 +283,7 @@ final class LiveLyrics {
     }
     void start() { if (closed || active) return; active=true; if (!key.isEmpty()) request(); }
     void stop() { active=false; cancel(); }
-    void close() { if (closed) return; closed=true; stop(); worker.shutdownNow(); pool.shutdownNow(); }
+    void close() { if (closed) return; closed=true; stop(); }
     private void cancel() {
         generation++;
         if (pending != null) { pending.cancel(true); pending=null; }
@@ -269,7 +306,7 @@ final class LiveLyrics {
         final long requestedDuration=duration;
         if(!preview)listener.onLyrics(null, "loading");
         final Progress progress=new Progress(token,requestedKey,preview ? cached : null);
-        pending=worker.submit(() -> {
+        pending=WORKER.submit(() -> {
             Result result;
             try {
                 if(manual!=null) {
@@ -525,32 +562,36 @@ final class LiveLyrics {
                 return WaveOutcome.miss(false, err, true, true);
             });
 
-            // 4. Unison (exact videoId / spotifyId + cleaned fallback)
-            primaryTasks.add(() -> {
-                boolean err = false;
-                LyricMatch match = new LyricMatch();
-                try {
-                    String uUrl = AggregateLyrics.unisonUrl(title, artist, album, spotifyId, videoForWave, duration);
-                    JSONObject info = readJson(uUrl, token, Math.min(raceBudget, SystemClock.elapsedRealtime() + 2400L));
-                    if (info != null) {
-                        Result r = LyricSources.unisonMatchedResult(info, title, artist, album, duration, match, identified);
-                        if (r.lyrics != null) return WaveOutcome.hit(r.lyrics, true, true);
-                    }
-                } catch (InterruptedIOException cancelled) { throw cancelled; }
-                catch (Exception e) { err = true; }
-                if (!searchTitle.equals(title) || !primaryArtist.equals(artist)) {
+            // 4. Unison (exact videoId / spotifyId + cleaned fallback; skipped while cooling down from repeated 404s)
+            final boolean unisonCooling = isHostBlocked("unison.betterlyrics.org", SystemClock.elapsedRealtime());
+            if (!unisonCooling) {
+                primaryTasks.add(() -> {
+                    boolean err = false;
+                    LyricMatch match = new LyricMatch();
                     try {
-                        String uClean = AggregateLyrics.unisonUrl(searchTitle, primaryArtist, "", spotifyId, videoForWave, duration);
-                        JSONObject info = readJson(uClean, token, Math.min(raceBudget, SystemClock.elapsedRealtime() + 2000L));
+                        String uUrl = AggregateLyrics.unisonUrl(title, artist, album, spotifyId, videoForWave, duration);
+                        JSONObject info = readJson(uUrl, token, Math.min(raceBudget, SystemClock.elapsedRealtime() + 2400L));
                         if (info != null) {
-                            Result r = LyricSources.unisonMatchedResult(info, title, artist, "", duration, match, identified);
+                            Result r = LyricSources.unisonMatchedResult(info, title, artist, album, duration, match, identified);
                             if (r.lyrics != null) return WaveOutcome.hit(r.lyrics, true, true);
                         }
                     } catch (InterruptedIOException cancelled) { throw cancelled; }
                     catch (Exception e) { err = true; }
-                }
-                return WaveOutcome.miss(false, err, true, true);
-            });
+                    if ((!searchTitle.equals(title) || !primaryArtist.equals(artist))
+                            && !isHostBlocked("unison.betterlyrics.org", SystemClock.elapsedRealtime())) {
+                        try {
+                            String uClean = AggregateLyrics.unisonUrl(searchTitle, primaryArtist, "", spotifyId, videoForWave, duration);
+                            JSONObject info = readJson(uClean, token, Math.min(raceBudget, SystemClock.elapsedRealtime() + 2000L));
+                            if (info != null) {
+                                Result r = LyricSources.unisonMatchedResult(info, title, artist, "", duration, match, identified);
+                                if (r.lyrics != null) return WaveOutcome.hit(r.lyrics, true, true);
+                            }
+                        } catch (InterruptedIOException cancelled) { throw cancelled; }
+                        catch (Exception e) { err = true; }
+                    }
+                    return WaveOutcome.miss(false, err, true, true);
+                });
+            }
 
             // 5. LyricsPlus (syllable-timed JSON; slow mirror does NOT block Wave 2 fallbacks)
             primaryTasks.add(() -> {
@@ -624,7 +665,9 @@ final class LiveLyrics {
                 });
             }
 
-            WaveSummary summary = runAdaptiveRace(primaryTasks, fallbackTasks, 4, 4, progress, token, raceBudget);
+            int expectedFast = unisonCooling ? 3 : 4;
+            int expectedWord = unisonCooling ? 3 : 4;
+            WaveSummary summary = runAdaptiveRace(primaryTasks, fallbackTasks, expectedFast, expectedWord, progress, token, raceBudget);
             sawInstrumental |= summary.instrumental;
             sawUnavailable |= summary.errored;
         }
@@ -667,7 +710,7 @@ final class LiveLyrics {
                                         List<Callable<WaveOutcome>> fallbackTasks,
                                         int fastCount, int wordCapableCount,
                                         Progress progress, long token, long raceDeadline) throws InterruptedIOException {
-        CompletionService<WaveOutcome> ecs = new ExecutorCompletionService<>(pool);
+        CompletionService<WaveOutcome> ecs = new ExecutorCompletionService<>(IO_POOL);
         List<Future<WaveOutcome>> futures = new ArrayList<>(primaryTasks.size() + fallbackTasks.size());
         for (Callable<WaveOutcome> task : primaryTasks) futures.add(ecs.submit(task));
         boolean instrumental = false, errored = false, fallbackLaunched = fallbackTasks.isEmpty(), tightened = false;
@@ -873,6 +916,9 @@ final class LiveLyrics {
         try {
             if (closed || generation!=token) throw new InterruptedIOException("Cancelled lyrics lookup");
             int status=http.getResponseCode();
+            if ("unison.betterlyrics.org".equals(host)) {
+                recordUnisonStatus(status, SystemClock.elapsedRealtime());
+            }
             if (status==429 || status==503) {
                 long wait=retryDelay(http.getHeaderField("Retry-After"),System.currentTimeMillis());
                 now=SystemClock.elapsedRealtime(); long blocked=wait>=Long.MAX_VALUE-now ? Long.MAX_VALUE : now+wait;

@@ -41,6 +41,8 @@ $sources = @(Get-ChildItem src -Recurse -Filter '*.java' | ForEach-Object FullNa
 
 & $tc.Javac -encoding UTF-8 -source 8 -target 8 -classpath $tc.AndroidJar -d build\stubs @stubs
 Check
+& $tc.Jar cf build\stubs.jar -C build\stubs .
+Check
 & $tc.Javac -encoding UTF-8 -source 8 -target 8 -classpath "$($tc.AndroidJar);build\stubs;$readingClasspath" -d build\production @sources
 Check
 & $tc.Jar cf build\loader.jar -C build\production .

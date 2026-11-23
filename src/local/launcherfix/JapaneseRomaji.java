@@ -57,7 +57,7 @@ final class JapaneseRomaji {
         for (int i=0; i<readings.length; i++) {
             cancelled(); String original=lyrics.at(i);
             Reading reading=repeated.get(original);
-            if (reading == null) { reading=line(tokenizer,original); repeated.put(original,reading); }
+            if (reading == null) { reading=line(tokenizer,original,false); repeated.put(original,reading); }
             readings[i]=reading.text; mapped[i]=reading.map(lyrics.wordsAt(i)); rubies[i]=reading.rubies;
         }
         return lyrics.withRomaji(readings,mapped,rubies);
@@ -97,8 +97,8 @@ final class JapaneseRomaji {
             return mapped;
         }
     }
-    static String alias(Tokenizer tokenizer,String original) { return line(tokenizer,original).text; }
-    private static Reading line(Tokenizer tokenizer,String original) {
+    static String alias(Tokenizer tokenizer,String original) { return line(tokenizer,original,true).text; }
+    private static Reading line(Tokenizer tokenizer,String original,boolean strictAllKanji) {
         if (!hasKana(original) && !hasHan(original)) return new Reading("",null,null);
         java.util.List<Token> tokens;
         synchronized (tokenizer) {
@@ -107,12 +107,19 @@ final class JapaneseRomaji {
         Lyrics.Ruby[] rubies=buildRubies(tokens,original);
         int[] boundaries=new int[original.length()+1]; java.util.Arrays.fill(boundaries,-1);
         StringBuilder result=new StringBuilder();
+        boolean skippedKanji=false;
         for (Token token:tokens) {
             String surface=token.getSurface(), reading=token.getReading();
             if (surface.indexOf('\n') >= 0) { result.append('\n'); continue; }
+            int originalStart=token.getPosition(),originalEnd=originalStart+surface.length();
             if (reading == null || reading.equals("*")) {
-                // shortcut: unknown kanji have no reliable reading; retain only the original line.
-                if (hasHan(surface)) return new Reading("",null,rubies);
+                if (hasHan(surface)) {
+                    if (strictAllKanji) return new Reading("",null,rubies);
+                    skippedKanji=true;
+                    if (originalStart>=0 && originalStart<=original.length()) boundaries[originalStart]=result.length();
+                    if (originalEnd>=0 && originalEnd<=original.length()) boundaries[originalEnd]=result.length();
+                    continue;
+                }
                 reading=surface;
             }
             if (token.getPartOfSpeechLevel1().equals("助詞")) {
@@ -121,7 +128,6 @@ final class JapaneseRomaji {
                 else if (surface.equals("を")) reading="オ";
             }
             String word=kana(reading).trim();
-            int originalStart=token.getPosition(),originalEnd=originalStart+surface.length();
             if (word.isEmpty()) { boundaries[originalStart]=result.length(); boundaries[originalEnd]=result.length(); continue; }
             boolean punctuation=token.getPartOfSpeechLevel1().equals("記号");
             boolean attach=token.getPartOfSpeechLevel1().equals("助動詞") || token.getPartOfSpeechLevel2().equals("接尾")
@@ -131,7 +137,7 @@ final class JapaneseRomaji {
             boundaries[originalStart]=result.length();
             result.append(word); boundaries[originalEnd]=result.length();
         }
-        return new Reading(result.toString().trim(),boundaries,rubies);
+        return new Reading(result.toString().trim(),skippedKanji ? null : boundaries,rubies);
     }
     private static Lyrics.Ruby[] buildRubies(java.util.List<Token> tokens,String original) {
         int n=tokens.size();

@@ -8,6 +8,33 @@ typedef uint8_t (*LensKernel)(const int32_t*,int32_t*,const int32_t*,const float
 typedef struct {int32_t locations[11];float values[38];int32_t check_error;} VideoDraw;
 typedef uint8_t (*VideoKernel)(const VideoDraw*);
 
+// Reusable scratch buffers serialized by synchronized Java callers (RustPixels.recolour / RustPixels.lens)
+// and released via lp_trim() when MemoryTrimmer runs.
+static jint *s_icon_out = NULL;
+static size_t s_icon_cap = 0;
+static jint *s_lens_out = NULL;
+static size_t s_lens_cap = 0;
+
+static jint* ensure_scratch(jint **buf, size_t *cap, size_t count) {
+    if (count == 0 || count > 4194304) return NULL;
+    if (*cap < count || !*buf) {
+        jint *next = (jint*)realloc(*buf, count * sizeof(jint));
+        if (!next) return NULL;
+        *buf = next;
+        *cap = count;
+    }
+    return *buf;
+}
+
+void lp_trim(void) {
+    free(s_icon_out);
+    s_icon_out = NULL;
+    s_icon_cap = 0;
+    free(s_lens_out);
+    s_lens_out = NULL;
+    s_lens_cap = 0;
+}
+
 jboolean lp_video(JNIEnv *e,jint program,jint position,jint source,jint next,jint source_matrix,
         jint next_matrix,jint blend_uniform,jint crop_uniform,jint flip_uniform,jint texture,jint next_texture,
         jfloatArray matrix,jfloatArray second_matrix,jfloatArray crop,jfloat blend,jfloat flip,
@@ -36,14 +63,13 @@ jboolean lp_icon(JNIEnv *e,jintArray pixels,jint w,jint h,jint color,jboolean tr
     if (!pixels) return JNI_FALSE;
     jsize len=(*e)->GetArrayLength(e,pixels);
     if (!valid(w,h,len) || len>4194304 || r<0 || r>255 || g<0 || g>255 || b<0 || b>255) return JNI_FALSE;
-    jint *out=malloc((size_t)len*sizeof(jint));
+    jint *out=ensure_scratch(&s_icon_out,&s_icon_cap,(size_t)len);
     if (!out) return JNI_FALSE;
     jint *in=(*e)->GetIntArrayElements(e,pixels,NULL);
-    if (!in) {free(out);return JNI_FALSE;}
+    if (!in) return JNI_FALSE;
     jboolean ok=kernel(in,out,len,w,h,color,transparent,glass,found,r,g,b);
     (*e)->ReleaseIntArrayElements(e,pixels,in,JNI_ABORT);
     if (ok) (*e)->SetIntArrayRegion(e,pixels,0,len,out);
-    free(out);
     return (*e)->ExceptionCheck(e) ? JNI_FALSE : ok;
 }
 
@@ -56,7 +82,7 @@ jboolean lp_lens(JNIEnv *e,jintArray src,jintArray dst,jintArray alpha,
         || !valid(w,h,(*e)->GetArrayLength(e,alpha)) || !valid(w,h,(*e)->GetArrayLength(e,ox))
         || !valid(w,h,(*e)->GetArrayLength(e,oy)) || !valid(w,h,(*e)->GetArrayLength(e,dispersion))
         || !valid(w,h,(*e)->GetArrayLength(e,specular))) return JNI_FALSE;
-    jint *out=malloc((size_t)w*h*sizeof(jint));
+    jint *out=ensure_scratch(&s_lens_out,&s_lens_cap,(size_t)w*(size_t)h);
     if (!out) return JNI_FALSE;
     jint *s=NULL,*a=NULL;
     jfloat *px=NULL,*py=NULL,*d=NULL,*sp=NULL;
@@ -76,6 +102,5 @@ done:
     if(a) (*e)->ReleaseIntArrayElements(e,alpha,a,JNI_ABORT);
     if(s) (*e)->ReleaseIntArrayElements(e,src,s,JNI_ABORT);
     if(ok) (*e)->SetIntArrayRegion(e,dst,0,w*h,out);
-    free(out);
     return (*e)->ExceptionCheck(e) ? JNI_FALSE : ok;
 }
