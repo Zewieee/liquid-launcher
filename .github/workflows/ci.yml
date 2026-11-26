@@ -68,7 +68,7 @@ jobs:
           jar cf bridge/bridge.jar -C bridge/classes .
           "$D8" --release --min-api 26 --lib "$ANDROID_JAR" --output bridge/dex bridge/bridge.jar
 
-          echo "4. Compiling 36 ART verification suites..."
+          echo "4. Compiling 37 ART verification suites..."
           find validation -name '*.java' > build/validation.list
           javac -encoding UTF-8 -source 8 -target 8 -classpath "$ANDROID_JAR:build/stubs.jar:build/loader.jar:bridge/bridge.jar:$LIBS_CP" -d validation/classes @build/validation.list
           jar cf validation/checks.jar -C validation/classes .

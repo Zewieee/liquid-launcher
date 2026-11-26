@@ -2,6 +2,13 @@
 
 All notable changes to the **Liquid Launcher** overlay are documented in this file.
 
+## [3.3-fix.147] - 2026-11-27
+
+### UI Bugfix (`MiniPlayer`)
+- **Unclipped Music Play/Pause & Control Rows (`MiniPlayer`):** Disabled child/padding clipping (`MiniPlayer.unclipped(...)`) across `controlsHud`, `progressRow`, `actionRow`, `creditRow`, and the timing-offset dialog row so the focused `44dp` circular Play/Pause button (`1.08x` scale + `-1.5dp` lift) and bottom pills are never sliced at the top or bottom edges.
+- **Exact Fractional-Density Circle Radius & Timeline Thumb Clearance:** Derived transport button corner radii directly from pixel diameter (`diameter * 0.5f`) and increased focused `Timeline` horizontal padding from `5.5dp` to `7.0dp` so the `6.8dp` thumb halo stays unclipped at `0%` and `100%`.
+- **Verification:** Added `Fix147PlayClipCheck` (29/29 default ART suites passing).
+
 ## [3.3-fix.146] - 2026-11-23
 
 ### Codebase-Wide Performance & Reliability (Rust/JNI + Java)

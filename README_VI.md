@@ -6,7 +6,7 @@
 
 [![CI Build & Security Audit](https://github.com/Zewieee/liquid-launcher/actions/workflows/ci.yml/badge.svg)](https://github.com/Zewieee/liquid-launcher/actions/workflows/ci.yml)
 [![Lyric Providers Health](https://github.com/Zewieee/liquid-launcher/actions/workflows/provider-health.yml/badge.svg)](https://github.com/Zewieee/liquid-launcher/actions/workflows/provider-health.yml)
-[![Version](https://img.shields.io/badge/release-v3.3--fix.146-0ea5e9?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/release-v3.3--fix.147-0ea5e9?style=flat-square)](CHANGELOG.md)
 [![Android API](https://img.shields.io/badge/Android_TV-API_26%2B-3ddc84?style=flat-square&logo=android&logoColor=white)](#yêu-cầu-môi-trường)
 [![Rust](https://img.shields.io/badge/Rust-1.85.1_(JNI)-f97316?style=flat-square&logo=rust&logoColor=white)](#kiến-trúc-hệ-thống)
 [![Page Size](https://img.shields.io/badge/ELF_Alignment-16_KB-6366f1?style=flat-square)](#tính-năng-nổi-bật)
@@ -23,7 +23,7 @@
 
 ## Tổng quan
 
-**Liquid Launcher** là lớp mở rộng giao diện cho launcher Android TV, tập trung vào ngôn ngữ thiết kế **kính mờ trong suốt không viền**, **thao tác D-pad trực quan bằng remote** và **chuyển động mượt 60fps**. Dự án kết hợp **91 lớp Java**, **4 mô-đun Rust/C JNI không phụ thuộc crate ngoài**, một **cầu nối media ADB tùy chọn** và **28 bộ kiểm thử ART tự động** chạy trực tiếp trên thiết bị.
+**Liquid Launcher** là lớp mở rộng giao diện cho launcher Android TV, tập trung vào ngôn ngữ thiết kế **kính mờ trong suốt không viền**, **thao tác D-pad trực quan bằng remote** và **chuyển động mượt 60fps**. Dự án kết hợp **91 lớp Java**, **4 mô-đun Rust/C JNI không phụ thuộc crate ngoài**, một **cầu nối media ADB tùy chọn** và **29 bộ kiểm thử ART tự động** chạy trực tiếp trên thiết bị.
 
 > **Lưu ý bản quyền & phạm vi:** Kho mã nguồn này chỉ chứa **100% mã nguồn gốc tự phát triển** (`src/`, `native/`, `bridge/`, `stubs/`, `validation/` và bộ script build). Thư mục giải mã APK gốc của bên thứ ba (`work/`), file `.apk`/`.jar` biên dịch sẵn, keystore ký số và tệp `.env` cục bộ được loại trừ hoàn toàn. Xem thêm [SECURITY.md](SECURITY.md).
 
@@ -168,7 +168,7 @@ Copy-Item .env.example .env
 
 ## Kiểm thử ART trên thiết bị
 
-Chạy toàn bộ **28 bộ kiểm thử ART** trực tiếp trên Android TV (tự dọn tệp tạm trong `/data/local/tmp` sau khi hoàn tất):
+Chạy toàn bộ **29 bộ kiểm thử ART** trực tiếp trên Android TV (tự dọn tệp tạm trong `/data/local/tmp` sau khi hoàn tất):
 
 ```powershell
 .\validation\run-checks.ps1 -Tv 192.168.1.100:5555
@@ -178,7 +178,7 @@ Chạy toàn bộ **28 bộ kiểm thử ART** trực tiếp trên Android TV (t
 
 ### Bảo trì tự động & GitHub Actions CI
 
-- **CI Build & Quét bảo mật ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):** Tự động chạy trên mỗi lần push hoặc tạo Pull Request để quét rò rỉ bí mật/tệp nhị phân (`scripts/check-maintenance.py --offline`), kiểm tra SHA-256 thư viện Maven, biên dịch toàn bộ 91 lớp Java + cầu nối ADB + 36 lớp kiểm thử + đóng gói D8 DEX với Android API 35, đồng thời chạy `cargo check` cho thư viện Rust `1.85.1`.
+- **CI Build & Quét bảo mật ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):** Tự động chạy trên mỗi lần push hoặc tạo Pull Request để quét rò rỉ bí mật/tệp nhị phân (`scripts/check-maintenance.py --offline`), kiểm tra SHA-256 thư viện Maven, biên dịch toàn bộ 91 lớp Java + cầu nối ADB + 37 lớp kiểm thử + đóng gói D8 DEX với Android API 35, đồng thời chạy `cargo check` cho thư viện Rust `1.85.1`.
 - **Giám sát định kỳ 7 nguồn lời bài hát ([`.github/workflows/provider-health.yml`](.github/workflows/provider-health.yml)):** Tự động kiểm tra hàng tuần (hoặc bấm chạy thủ công 1 chạm trên tab Actions) tình trạng hoạt động và độ trễ của 7 API lời bài hát HTTPS để phát hiện sớm nếu có nguồn bên thứ ba đổi endpoint. Bạn cũng có thể chạy kiểm tra ngay trên máy bất cứ lúc nào:
   ```powershell
   python scripts/check-maintenance.py

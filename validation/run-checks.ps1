@@ -33,7 +33,7 @@ $readingClasspath = $readingLibraries -join ';'
 $names = @(
     'CheckRunner', 'MetadataCheck', 'MultiMediaCheck', 'DirectMediaCheck', 'GenericMediaCheck',
     'BitChordLyricsCheck', 'Fix140LyricsCheck', 'Fix141Check', 'Fix142Check', 'Fix143VisualizerCheck',
-    'Fix144AccuracyCheck', 'Fix145OptimizeCheck', 'Fix146ImproveCheck', 'LiveParallelLyricsCheck', 'GalleryCheck',
+    'Fix144AccuracyCheck', 'Fix145OptimizeCheck', 'Fix146ImproveCheck', 'Fix147PlayClipCheck', 'LiveParallelLyricsCheck', 'GalleryCheck',
     'SpotifyIdCheck', 'LiveMediaCheck', 'SourceChainCheck', 'ExtraSourcesCheck', 'RecordingCheck',
     'AggregateCheck', 'LatencyCheck', 'ProgressStateCheck', 'ProviderFormatCheck', 'CandidateCheck',
     'ManualLyricsCheck', 'RomajiCheck', 'KaraokeCheck', 'RubyLayoutCheck',
@@ -68,6 +68,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Bridge dex push failed' }
 
     $checks = @(
+        'local.launcherfix.Fix147PlayClipCheck',
         'local.launcherfix.Fix146ImproveCheck',
         'local.launcherfix.Fix145OptimizeCheck',
         'local.launcherfix.Fix144AccuracyCheck',

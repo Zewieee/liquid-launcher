@@ -112,6 +112,22 @@ public final class MiniPlayer {
         }
     }
 
+    static <T extends ViewGroup> T unclipped(T group) {
+        if (group != null) {
+            group.setClipChildren(false);
+            group.setClipToPadding(false);
+        }
+        return group;
+    }
+
+    static float timelineFocusPadDp() {
+        return 7.0f;
+    }
+
+    static float timelineThumbGlowRadiusDp() {
+        return 6.8f;
+    }
+
     private static final class Session {
         final Activity owner;
         final Dialog dialog;
@@ -284,12 +300,10 @@ public final class MiniPlayer {
             panel.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
 
             // 2. Bottom-left track identity + sleek borderless Liquid Glass controls.
-            LinearLayout leftBottom = new LinearLayout(owner);
+            LinearLayout leftBottom = unclipped(new LinearLayout(owner));
             leftBottom.setOrientation(LinearLayout.VERTICAL);
             leftBottom.setGravity(Gravity.BOTTOM | Gravity.START);
             leftBottom.setPadding(px(34), px(20), px(16), px(24));
-            leftBottom.setClipChildren(false);
-            leftBottom.setClipToPadding(false);
             FrameLayout.LayoutParams leftLp = new FrameLayout.LayoutParams(px(438), -1, Gravity.START | Gravity.BOTTOM);
             panel.addView(leftBottom, leftLp);
 
@@ -320,14 +334,14 @@ public final class MiniPlayer {
             trackHeader.addView(visualizer, visLp);
             leftBottom.addView(trackHeader, new LinearLayout.LayoutParams(-1, -2));
 
-            controlsHud = new LinearLayout(owner);
+            controlsHud = unclipped(new LinearLayout(owner));
             controlsHud.setOrientation(LinearLayout.VERTICAL);
             controlsHud.setGravity(Gravity.START);
             LinearLayout.LayoutParams hudLp = new LinearLayout.LayoutParams(-1, -2);
             hudLp.topMargin = px(12);
             leftBottom.addView(controlsHud, hudLp);
 
-            LinearLayout progressRow = new LinearLayout(owner);
+            LinearLayout progressRow = unclipped(new LinearLayout(owner));
             progressRow.setOrientation(LinearLayout.HORIZONTAL);
             progressRow.setGravity(Gravity.CENTER_VERTICAL);
             elapsed = text("--:--", 10, 0xc8ffffff);
@@ -369,7 +383,7 @@ public final class MiniPlayer {
             progressRow.addView(total, new LinearLayout.LayoutParams(-2, px(16)));
             controlsHud.addView(progressRow, new LinearLayout.LayoutParams(-1, px(20)));
 
-            LinearLayout actionRow = new LinearLayout(owner);
+            LinearLayout actionRow = unclipped(new LinearLayout(owner));
             actionRow.setOrientation(LinearLayout.HORIZONTAL);
             actionRow.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
             actionRow.setBaselineAligned(false);
@@ -436,7 +450,7 @@ public final class MiniPlayer {
             plainScroll.addView(plainView, new ScrollView.LayoutParams(-1, -2));
             rightStage.addView(plainScroll, new FrameLayout.LayoutParams(-1, -1));
 
-            creditRow = new LinearLayout(owner);
+            creditRow = unclipped(new LinearLayout(owner));
             creditRow.setOrientation(LinearLayout.HORIZONTAL);
             creditRow.setGravity(Gravity.CENTER_VERTICAL);
             lyricCredit = text("Better Lyrics · LyricsPlus · LrcRed · Unison · LRCLIB", 9, 0x66ffffff);
@@ -655,7 +669,7 @@ public final class MiniPlayer {
             for (int i = 0; i < mediaButtons.size(); i++) {
                 View btn = mediaButtons.get(i);
                 boolean primary = btn == play;
-                int rad = px(primary ? 22 : 19);
+                float rad = px(primary ? 44 : 38) * 0.5f;
                 StateListDrawable bg = new StateListDrawable();
                 Drawable pressed = WallpaperTheme.focusWash(rad, tone, true);
                 pressed.setAlpha(196);
@@ -1069,7 +1083,7 @@ public final class MiniPlayer {
             offsetDialog = picker;
             picker.setOwnerActivity(owner);
             picker.requestWindowFeature(Window.FEATURE_NO_TITLE);
-            LinearLayout content = new LinearLayout(owner);
+            LinearLayout content = unclipped(new LinearLayout(owner));
             content.setOrientation(LinearLayout.VERTICAL);
             content.setPadding(px(22), px(18), px(22), px(18));
             content.setBackground(WallpaperTheme.glass(dp, activeTone));
@@ -1085,7 +1099,7 @@ public final class MiniPlayer {
             readLp.topMargin = px(4);
             content.addView(readout, readLp);
 
-            LinearLayout row = new LinearLayout(owner);
+            LinearLayout row = unclipped(new LinearLayout(owner));
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, px(40));
@@ -1507,7 +1521,7 @@ public final class MiniPlayer {
         @Override
         protected void onDraw(Canvas canvas) {
             boolean focused = isFocused();
-            float pad = focused ? 5.5f * density : 0f;
+            float pad = focused ? timelineFocusPadDp() * density : 0f;
             float left = pad, right = Math.max(left + 1f, getWidth() - pad);
             float trackW = right - left;
             float radius = (focused ? 2.2f : 1.5f) * density, middle = getHeight() / 2f;
@@ -1523,7 +1537,7 @@ public final class MiniPlayer {
             if (focused) {
                 float cx = Math.max(left, Math.min(right, filledRight));
                 paint.setColor(0x48ffffff);
-                canvas.drawCircle(cx, middle, 6.8f * density, paint);
+                canvas.drawCircle(cx, middle, timelineThumbGlowRadiusDp() * density, paint);
                 paint.setColor(0xffffffff);
                 canvas.drawCircle(cx, middle, 4.4f * density, paint);
             }
